@@ -1,7 +1,7 @@
 {
-  "name": "App Contable",
-  "short_name": "Contable",
-  "description": "App contable con inventario, ventas, gastos, clientes y proveedores",
+  "name": "Créditos Daza",
+  "short_name": "Daza",
+  "description": "Sistema de créditos para venta de artículos para el hogar",
   "theme_color": "#111827",
   "background_color": "#f3f4f6",
   "display": "standalone",
