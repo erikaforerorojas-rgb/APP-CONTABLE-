@@ -185,7 +185,12 @@ const styles = {
     padding: 12,
     borderBottom: `1px solid ${colors.border}`,
   },
-  td: { padding: 12, borderBottom: "1px solid #f3f4f6", fontSize: 14, verticalAlign: "top" },
+  td: {
+    padding: 12,
+    borderBottom: "1px solid #f3f4f6",
+    fontSize: 14,
+    verticalAlign: "top",
+  },
   badge: {
     display: "inline-block",
     borderRadius: 999,
@@ -494,27 +499,28 @@ export default function App() {
       notes: saleNotes,
     };
 
-    const creditFields = salePaymentType === "Crédito"
-      ? {
-          downPayment: salePreview.downPayment,
-          balanceDue: salePreview.balance,
-          installments: salePreview.installments,
-          installmentValue: salePreview.installmentValue,
-          paidOnCredit: salePreview.downPayment,
-          frequency: saleFrequency,
-          status: salePreview.balance > 0 ? "Activo" : "Pagado",
-          nextPaymentDate: salePreview.balance > 0 ? nextPaymentDateFromToday() : null,
-        }
-      : {
-          downPayment: salePreview.total,
-          balanceDue: 0,
-          installments: 1,
-          installmentValue: 0,
-          paidOnCredit: salePreview.total,
-          frequency: "N/A",
-          status: "Pagado",
-          nextPaymentDate: null,
-        };
+    const creditFields =
+      salePaymentType === "Crédito"
+        ? {
+            downPayment: salePreview.downPayment,
+            balanceDue: salePreview.balance,
+            installments: salePreview.installments,
+            installmentValue: salePreview.installmentValue,
+            paidOnCredit: salePreview.downPayment,
+            frequency: saleFrequency,
+            status: salePreview.balance > 0 ? "Activo" : "Pagado",
+            nextPaymentDate: salePreview.balance > 0 ? nextPaymentDateFromToday() : null,
+          }
+        : {
+            downPayment: salePreview.total,
+            balanceDue: 0,
+            installments: 1,
+            installmentValue: 0,
+            paidOnCredit: salePreview.total,
+            frequency: "N/A",
+            status: "Pagado",
+            nextPaymentDate: null,
+          };
 
     const sale = { ...baseSale, ...creditFields };
 
@@ -994,7 +1000,9 @@ export default function App() {
             ["sales", "Ventas y créditos"],
             ["reports", "Gastos y reportes"],
           ].map(([key, label]) => (
-            <button key={key} onClick={() => setTab(key)} style={{ ...styles.tab, ...(tab === key ? styles.tabActive : {}) }}>{label}</button>
+            <button key={key} onClick={() => setTab(key)} style={{ ...styles.tab, ...(tab === key ? styles.tabActive : {}) }}>
+              {label}
+            </button>
           ))}
         </div>
 
