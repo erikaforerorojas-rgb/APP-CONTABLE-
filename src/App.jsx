@@ -213,6 +213,12 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function addMonths(dateString, months) {
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setMonth(date.getMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
 function loadData() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -264,6 +270,7 @@ export default function App() {
   const [isCredit, setIsCredit] = useState(false);
   const [initialPayment, setInitialPayment] = useState("");
   const [installments, setInstallments] = useState("6");
+  const [creditDueDate, setCreditDueDate] = useState(addMonths(today(), 1));
   const [paymentForm, setPaymentForm] = useState({ creditId: "", amount: "", date: today() });
 
   useEffect(() => {
@@ -408,6 +415,7 @@ export default function App() {
     const initialPay = Math.max(0, Number(initialPayment || 0));
     const creditBalance = Math.max(0, salePreview.total - initialPay);
     const creditInstallments = Math.max(1, Number(installments || 1));
+    const firstDueDate = creditDueDate || addMonths(today(), 1);
 
     const credit = isCredit
       ? {
@@ -416,13 +424,15 @@ export default function App() {
           number: sale.number,
           client: client.name,
           date: today(),
+          dueDate: firstDueDate,
+          nextPaymentDate: firstDueDate,
           total: salePreview.total,
           initialPayment: initialPay,
           balance: creditBalance,
           installments: creditInstallments,
           installmentValue: Math.ceil(creditBalance / creditInstallments),
           payments: initialPay > 0 ? [{ id: uid(), amount: initialPay, date: today(), note: "Abono inicial" }] : [],
-          status: creditBalance <= 0 ? "Pagado" : "Pendiente",
+          status: creditBalance <= 0 ? "Pagado" : firstDueDate < today() ? "Atrasado" : "Pendiente",
         }
       : null;
 
@@ -440,12 +450,48 @@ export default function App() {
     setIsCredit(false);
     setInitialPayment("");
     setInstallments("6");
+    setCreditDueDate(addMonths(today(), 1));
     alert("Venta registrada correctamente");
+  };
+
+  const getCreditStatus = (credit) => {
+    if (Number(credit.balance || 0) <= 0) return "Pagado";
+    if ((credit.nextPaymentDate || credit.dueDate) < today()) return "Atrasado";
+    return "Pendiente";
+  };
+
+  const getBadgeStyleByStatus = (status) => {
+    if (status === "Pagado") return styles.badgeOk;
+    if (status === "Atrasado") return styles.badgeDanger;
+    return styles.badgeWarn;
   };
 
   const registerCreditPayment = () => {
     const amount = Number(paymentForm.amount || 0);
-    if (!paymentForm.creditId || amount <= 0) return;
+
+    if (!paymentForm.creditId) {
+      alert("Selecciona un crédito");
+      return;
+    }
+
+    if (amount <= 0) {
+      alert("Ingresa un valor válido");
+      return;
+    }
+
+    const selectedCredit = (data.credits || []).find(
+      (credit) => String(credit.id) === String(paymentForm.creditId)
+    );
+
+    if (!selectedCredit) {
+      alert("Crédito no encontrado");
+      return;
+    }
+
+    if (amount > Number(selectedCredit.balance || 0)) {
+      alert("No puedes pagar más del saldo pendiente");
+      return;
+    }
 
     setData((prev) => ({
       ...prev,
@@ -453,13 +499,16 @@ export default function App() {
         if (String(credit.id) !== String(paymentForm.creditId)) return credit;
 
         const newBalance = Math.max(0, Number(credit.balance || 0) - amount);
+        const currentNextDate = credit.nextPaymentDate || credit.dueDate || paymentForm.date;
+        const newNextPaymentDate = newBalance <= 0 ? "" : addMonths(currentNextDate, 1);
         const newPayment = { id: uid(), amount, date: paymentForm.date, note: "Pago de cuota" };
 
         return {
           ...credit,
           balance: newBalance,
+          nextPaymentDate: newNextPaymentDate,
           payments: [newPayment, ...(credit.payments || [])],
-          status: newBalance <= 0 ? "Pagado" : "Pendiente",
+          status: newBalance <= 0 ? "Pagado" : newNextPaymentDate < today() ? "Atrasado" : "Pendiente",
         };
       }),
     }));
@@ -619,6 +668,14 @@ export default function App() {
                   onChange={(e) => setInstallments(e.target.value)}
                 />
               </Field>
+              <Field label="Primera fecha de pago">
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={creditDueDate}
+                  onChange={(e) => setCreditDueDate(e.target.value)}
+                />
+              </Field>
             </>
           )}
         </div>
@@ -674,9 +731,13 @@ export default function App() {
                 <span>Saldo a crédito</span>
                 <strong>{currency.format(Math.max(0, salePreview.total - Number(initialPayment || 0)))}</strong>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span>Valor por cuota</span>
                 <strong>{currency.format(Math.ceil(Math.max(0, salePreview.total - Number(initialPayment || 0)) / Math.max(1, Number(installments || 1))))}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Primera fecha de pago</span>
+                <strong>{creditDueDate}</strong>
               </div>
             </>
           )}
@@ -789,17 +850,75 @@ export default function App() {
   );
 
   const renderCredits = () => {
-    const credits = data.credits || [];
-    const pendingCredits = credits.filter((credit) => credit.status !== "Pagado");
+    const credits = (data.credits || []).map((credit) => ({
+      ...credit,
+      status: getCreditStatus(credit),
+    }));
+    const pendingCredits = credits.filter((credit) => credit.status === "Pendiente");
+    const overdueCredits = credits.filter((credit) => credit.status === "Atrasado");
     const paidCredits = credits.filter((credit) => credit.status === "Pagado");
-    const totalPending = pendingCredits.reduce((sum, credit) => sum + Number(credit.balance || 0), 0);
+    const activeCredits = credits.filter((credit) => credit.status !== "Pagado");
+    const totalPending = activeCredits.reduce((sum, credit) => sum + Number(credit.balance || 0), 0);
+    const totalOverdue = overdueCredits.reduce((sum, credit) => sum + Number(credit.balance || 0), 0);
+    const totalSoldOnCredit = credits.reduce((sum, credit) => sum + Number(credit.total || 0), 0);
+    const totalCollected = credits.reduce((sum, credit) => {
+      const payments = (credit.payments || []).reduce((paySum, payment) => paySum + Number(payment.amount || 0), 0);
+      return sum + payments;
+    }, 0);
+
+    const selectCreditForPayment = (credit) => {
+      setPaymentForm({
+        creditId: String(credit.id),
+        amount: String(Math.min(Number(credit.installmentValue || credit.balance || 0), Number(credit.balance || 0))),
+        date: today(),
+      });
+    };
+
+    const exportCreditsReport = () => {
+      const header = [
+        "Factura",
+        "Cliente",
+        "Fecha venta",
+        "Proximo pago",
+        "Total",
+        "Saldo",
+        "Cuotas",
+        "Valor cuota",
+        "Estado",
+      ];
+
+      const rows = credits.map((credit) => [
+        credit.number,
+        credit.client,
+        credit.date,
+        credit.nextPaymentDate || credit.dueDate || "",
+        credit.total,
+        credit.balance,
+        credit.installments,
+        credit.installmentValue,
+        credit.status,
+      ]);
+
+      const csv = [header, ...rows]
+        .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(","))
+        .join("\n");
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "reporte-creditos.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    };
 
     return (
       <div style={{ display: "grid", gap: 18 }}>
         <div style={styles.statsGrid}>
-          <Stat label="Saldo por cobrar" value={currency.format(totalPending)} helper={`${pendingCredits.length} créditos pendientes`} />
+          <Stat label="Saldo por cobrar" value={currency.format(totalPending)} helper={`${activeCredits.length} créditos activos`} />
+          <Stat label="Cartera atrasada" value={currency.format(totalOverdue)} helper={`${overdueCredits.length} créditos atrasados`} />
           <Stat label="Créditos pagados" value={paidCredits.length} helper="Clientes sin saldo pendiente" />
-          <Stat label="Total créditos" value={credits.length} helper="Ventas financiadas registradas" />
+          <Stat label="Recaudado" value={currency.format(totalCollected)} helper={`Ventas a crédito: ${currency.format(totalSoldOnCredit)}`} />
         </div>
 
         <div style={styles.gridTwo}>
@@ -814,7 +933,7 @@ export default function App() {
                   onChange={(e) => setPaymentForm({ ...paymentForm, creditId: e.target.value })}
                 >
                   <option value="">Seleccionar crédito</option>
-                  {pendingCredits.map((credit) => (
+                  {activeCredits.map((credit) => (
                     <option key={credit.id} value={credit.id}>
                       {credit.number} - {credit.client} - {currency.format(credit.balance)}
                     </option>
@@ -839,16 +958,43 @@ export default function App() {
                 />
               </Field>
             </div>
-            <div style={{ marginTop: 12 }}>
+            <div style={{ ...styles.row, marginTop: 12 }}>
               <button style={styles.button} onClick={registerCreditPayment}>Guardar pago</button>
+              <button style={styles.buttonSecondary} onClick={exportCreditsReport}>Exportar cartera</button>
             </div>
           </div>
 
           <div style={styles.card}>
-            <h3 style={styles.sectionTitle}>Lista de créditos</h3>
-            <p style={styles.sectionText}>Consulta cuotas, saldos y pagos realizados.</p>
+            <h3 style={styles.sectionTitle}>Reporte de cartera</h3>
+            <p style={styles.sectionText}>Resumen ejecutivo de créditos y recaudo.</p>
+            <div style={styles.invoiceBox}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span>Total vendido a crédito</span>
+                <strong>{currency.format(totalSoldOnCredit)}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span>Total recaudado</span>
+                <strong>{currency.format(totalCollected)}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span>Saldo pendiente</span>
+                <strong>{currency.format(totalPending)}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Cartera atrasada</span>
+                <strong>{currency.format(totalOverdue)}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
 
-            {credits.length ? credits.map((credit) => (
+        <div style={styles.card}>
+          <h3 style={styles.sectionTitle}>Lista de créditos</h3>
+          <p style={styles.sectionText}>Consulta cuotas, vencimientos, saldos y pagos realizados.</p>
+
+          {credits.length ? credits.map((credit) => {
+            const status = getCreditStatus(credit);
+            return (
               <div key={credit.id} style={{ ...styles.invoiceBox, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div>
@@ -860,14 +1006,24 @@ export default function App() {
                     <div style={{ color: "#6b7280", marginTop: 6 }}>
                       {credit.installments} cuotas de {currency.format(credit.installmentValue || 0)}
                     </div>
+                    <div style={{ color: status === "Atrasado" ? "#991b1b" : "#6b7280", marginTop: 6 }}>
+                      Próximo pago: {credit.nextPaymentDate || credit.dueDate || "Sin fecha"}
+                    </div>
                   </div>
 
                   <div style={{ textAlign: "right" }}>
                     <strong>{currency.format(credit.balance || 0)}</strong>
                     <div style={{ color: "#6b7280", marginTop: 6 }}>Saldo pendiente</div>
-                    <span style={{ ...styles.badge, ...(credit.status === "Pagado" ? styles.badgeOk : styles.badgeWarn), marginTop: 8 }}>
-                      {credit.status}
+                    <span style={{ ...styles.badge, ...getBadgeStyleByStatus(status), marginTop: 8 }}>
+                      {status}
                     </span>
+                    {status !== "Pagado" && (
+                      <div style={{ marginTop: 10 }}>
+                        <button style={styles.buttonSecondary} onClick={() => selectCreditForPayment(credit)}>
+                          Pagar cuota
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -883,10 +1039,10 @@ export default function App() {
                   </div>
                 ) : null}
               </div>
-            )) : (
-              <div style={styles.invoiceBox}>Todavía no hay créditos registrados.</div>
-            )}
-          </div>
+            );
+          }) : (
+            <div style={styles.invoiceBox}>Todavía no hay créditos registrados.</div>
+          )}
         </div>
       </div>
     );
