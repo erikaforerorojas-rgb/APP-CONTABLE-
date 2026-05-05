@@ -1,18 +1,8 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-
-// 🔴 REEMPLAZA ESTO CON TU CONFIG DE FIREBASE
 const firebaseConfig = {
-  apiKey: "TU_API_KEY",
-  authDomain: "TU_AUTH_DOMAIN",
+  apiKey: "AIzaSy...",
+  authDomain: "creditos-daza.firebaseapp.com",
   projectId: "creditos-daza",
-  storageBucket: "TU_STORAGE_BUCKET",
-  messagingSenderId: "TU_SENDER_ID",
-  appId: "TU_APP_ID"
+  storageBucket: "creditos-daza.firebasestorage.app",
+  messagingSenderId: "952632228062",
+  appId: "1:952632228062:web:..."
 };
-
-// Inicializar Firebase
-const app = initializeApp(firebaseConfig);
-
-// Exportar base de datos
-export const db = getFirestore(app);
